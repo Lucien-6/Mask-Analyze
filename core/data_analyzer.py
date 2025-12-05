@@ -12,6 +12,11 @@ from typing import List, Dict, Any, Tuple, Optional
 import platform
 import os
 
+from core.logger import get_logger
+
+# 获取模块日志记录器
+logger = get_logger("data_analyzer")
+
 
 class ChartGenerator:
     def __init__(self):
@@ -80,9 +85,9 @@ class ChartGenerator:
                 plt.rcParams['font.family'] = ['sans-serif']
                 # 设置回退字体，可能支持部分中文字符
                 plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Bitstream Vera Sans', 'Arial', 'sans-serif']
-                print("警告：未找到中文字体，图表中的中文可能无法正确显示")
+                logger.warning("未找到中文字体，图表中的中文可能无法正确显示")
             except Exception as e:
-                print(f"设置字体出错: {str(e)}")
+                logger.error(f"设置字体出错: {e}")
         
         # 通用配置
         plt.rcParams['axes.unicode_minus'] = False  # 正确显示负号
@@ -422,7 +427,7 @@ class ChartGenerator:
             data=areas,
             x_label="面积 (μm²)",
             y_label="频率",
-            title=f"对象面积分布 (当前帧: {frame_stats['frame']+1})",
+            title=f"对象面积分布 (当前帧: {frame_stats['frame']})",
             color='red',
             bins=30
         )
@@ -444,7 +449,7 @@ class ChartGenerator:
             data=major_axes,
             x_label="长轴 (μm)",
             y_label="频率",
-            title=f"对象长轴分布 (当前帧: {frame_stats['frame']+1})",
+            title=f"对象长轴分布 (当前帧: {frame_stats['frame']})",
             color='purple',
             bins=30
         )
@@ -466,7 +471,7 @@ class ChartGenerator:
             data=minor_axes,
             x_label="短轴 (μm)",
             y_label="频率",
-            title=f"对象短轴分布 (当前帧: {frame_stats['frame']+1})",
+            title=f"对象短轴分布 (当前帧: {frame_stats['frame']})",
             color='teal',
             bins=30
         )
@@ -488,7 +493,7 @@ class ChartGenerator:
             data=aspect_ratios,
             x_label="纵横比 (长轴/短轴)",
             y_label="频率",
-            title=f"对象纵横比分布 (当前帧: {frame_stats['frame']+1})",
+            title=f"对象纵横比分布 (当前帧: {frame_stats['frame']})",
             color='orange',
             bins=30
         )
@@ -509,7 +514,7 @@ class ChartGenerator:
             fig.savefig(filepath, dpi=dpi, bbox_inches='tight')
             return True
         except Exception as e:
-            print(f"保存图表失败: {str(e)}")
+            logger.error(f"保存图表失败: {e}")
             return False
             
     def export_data_to_csv(self, data: Dict[str, Any], filepath: str) -> bool:
@@ -550,7 +555,7 @@ class ChartGenerator:
                 
             return True
         except Exception as e:
-            print(f"导出CSV失败: {str(e)}")
+            logger.error(f"导出CSV失败: {e}")
             return False
     
     def prepare_export_data(self, global_stats: Dict[str, Any]) -> Dict[str, Dict]:

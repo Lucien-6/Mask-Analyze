@@ -11,6 +11,11 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 import os
 
+from core.logger import get_logger
+
+# 获取模块日志记录器
+logger = get_logger("data_loader")
+
 
 class DataLoaderWidget(QWidget):
     """数据加载部件"""
@@ -191,7 +196,7 @@ class DataLoaderWidget(QWidget):
                 self.end_idx_spin.setValue(image_count - 1)
                 
         except Exception as e:
-            print(f"更新帧范围时出错: {str(e)}")
+            logger.error(f"更新帧范围时出错: {e}")
             
     # 获取原始图片目录的完整路径
     def get_original_dir(self):

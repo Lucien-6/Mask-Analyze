@@ -23,7 +23,7 @@ class HelpDialog(QDialog):
     def init_ui(self):
         """初始化UI"""
         self.setWindowTitle("帮助")
-        self.resize(600, 500)
+        self.resize(1200, 900)
         
         main_layout = QVBoxLayout(self)
         
@@ -232,7 +232,7 @@ class HelpDialog(QDialog):
         return """
         <h2>关于掩膜数据分析工具</h2>
         
-        <p><b>版本:</b> 1.1.0</p>
+        <p><b>版本:</b> 1.2.0</p>
         <p><b>作者:</b> Lucien</p>
         <p><b>联系方式:</b> lucien-6@qq.com</p>
         

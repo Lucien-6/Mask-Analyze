@@ -18,6 +18,10 @@ from typing import Dict, Any, List
 
 from core.image_processor import ImageProcessor
 from core.data_analyzer import ChartGenerator
+from core.logger import get_logger
+
+# 获取模块日志记录器
+logger = get_logger("export_dialog")
 
 
 class ExportDialog(QDialog):
@@ -250,7 +254,7 @@ class ExportDialog(QDialog):
                 self.progress_bar.setValue(int(100 * completed_charts / total_charts))
                 QCoreApplication.processEvents()  # 刷新UI
             except Exception as e:
-                print(f"导出对象数量-时间曲线图失败: {str(e)}")
+                logger.error(f"导出对象数量-时间曲线图失败: {e}")
         
         # 2. 导出面积分数-时间曲线图表
         self.status_label.setText("导出面积分数-时间曲线图...")
@@ -265,7 +269,7 @@ class ExportDialog(QDialog):
                 self.progress_bar.setValue(int(100 * completed_charts / total_charts))
                 QCoreApplication.processEvents()  # 刷新UI
             except Exception as e:
-                print(f"导出面积分数-时间曲线图失败: {str(e)}")
+                logger.error(f"导出面积分数-时间曲线图失败: {e}")
         
         # 3. 导出全局对象面积分布图
         self.status_label.setText("导出全局面积分布图...")
@@ -280,7 +284,7 @@ class ExportDialog(QDialog):
                 self.progress_bar.setValue(int(100 * completed_charts / total_charts))
                 QCoreApplication.processEvents()  # 刷新UI
             except Exception as e:
-                print(f"导出全局面积分布图失败: {str(e)}")
+                logger.error(f"导出全局面积分布图失败: {e}")
         
         # 4. 导出全局对象纵横比图
         self.status_label.setText("导出全局纵横比分布图...")
@@ -295,7 +299,7 @@ class ExportDialog(QDialog):
                 self.progress_bar.setValue(int(100 * completed_charts / total_charts))
                 QCoreApplication.processEvents()  # 刷新UI
             except Exception as e:
-                print(f"导出全局纵横比分布图失败: {str(e)}")
+                logger.error(f"导出全局纵横比分布图失败: {e}")
         
         # 创建帧图表目录
         frame_charts_dir = os.path.join(charts_dir, "frame_charts")
@@ -327,7 +331,7 @@ class ExportDialog(QDialog):
             try:
                 frame_stats = self.image_processor.get_frame_stats(frame_idx)
                 if not frame_stats or not frame_stats.get('objects'):
-                    print(f"跳过帧 {frame_idx}: 没有对象数据")
+                    logger.info(f"跳过帧 {frame_idx}: 没有对象数据")
                     continue  # 跳过无数据的帧
                 
                 # 为当前帧生成各种分析图表
@@ -339,7 +343,7 @@ class ExportDialog(QDialog):
                     chart_path = os.path.join(frame_charts_dir, f"frame_{frame_idx:04d}_area_chart.png")
                     success = self.chart_generator.save_chart(area_hist_fig, chart_path)
                     if not success:
-                        print(f"保存帧 {frame_idx} 的面积分布图失败")
+                        logger.error(f"保存帧 {frame_idx} 的面积分布图失败")
                     
                     # 2. 长轴分布直方图 - 使用专门为帧设计的方法
                     self.status_label.setText(f"生成帧 {frame_idx+1} 的长轴分布图...")
@@ -348,7 +352,7 @@ class ExportDialog(QDialog):
                     chart_path = os.path.join(frame_charts_dir, f"frame_{frame_idx:04d}_major_axis_chart.png")
                     success = self.chart_generator.save_chart(major_axis_hist_fig, chart_path)
                     if not success:
-                        print(f"保存帧 {frame_idx} 的长轴分布图失败")
+                        logger.error(f"保存帧 {frame_idx} 的长轴分布图失败")
                     
                     # 3. 短轴分布直方图 - 使用专门为帧设计的方法
                     self.status_label.setText(f"生成帧 {frame_idx+1} 的短轴分布图...")
@@ -357,7 +361,7 @@ class ExportDialog(QDialog):
                     chart_path = os.path.join(frame_charts_dir, f"frame_{frame_idx:04d}_minor_axis_chart.png")
                     success = self.chart_generator.save_chart(minor_axis_hist_fig, chart_path)
                     if not success:
-                        print(f"保存帧 {frame_idx} 的短轴分布图失败")
+                        logger.error(f"保存帧 {frame_idx} 的短轴分布图失败")
                     
                     # 4. 纵横比分布直方图 - 使用专门为帧设计的方法
                     self.status_label.setText(f"生成帧 {frame_idx+1} 的纵横比分布图...")
@@ -366,15 +370,15 @@ class ExportDialog(QDialog):
                     chart_path = os.path.join(frame_charts_dir, f"frame_{frame_idx:04d}_aspect_ratio_chart.png")
                     success = self.chart_generator.save_chart(aspect_ratio_hist_fig, chart_path)
                     if not success:
-                        print(f"保存帧 {frame_idx} 的纵横比分布图失败")
+                        logger.error(f"保存帧 {frame_idx} 的纵横比分布图失败")
                     
                     successful_frames += 1
                 except Exception as e:
-                    print(f"处理帧 {frame_idx} 的图表时出错: {str(e)}")
+                    logger.error(f"处理帧 {frame_idx} 的图表时出错: {e}")
                     continue
                     
             except Exception as e:
-                print(f"获取帧 {frame_idx} 的统计数据时出错: {str(e)}")
+                logger.error(f"获取帧 {frame_idx} 的统计数据时出错: {e}")
                 continue
         
         if successful_frames > 0:
@@ -422,9 +426,9 @@ class ExportDialog(QDialog):
                                     obj_copy['frame'] = frame_idx + 1
                                     all_objects.append(obj_copy)
                                 except Exception as obj_err:
-                                    print(f"处理帧 {frame_idx} 的对象数据时出错: {str(obj_err)}")
+                                    logger.error(f"处理帧 {frame_idx} 的对象数据时出错: {obj_err}")
                 except Exception as frame_err:
-                    print(f"获取帧 {frame_idx} 的对象数据时出错: {str(frame_err)}")
+                    logger.error(f"获取帧 {frame_idx} 的对象数据时出错: {frame_err}")
             
             # 更新UI
             self.status_label.setText("准备导出Excel数据...")

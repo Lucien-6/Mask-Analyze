@@ -10,6 +10,12 @@ import glob
 import threading
 from collections import OrderedDict
 from typing import List, Tuple, Dict, Any, Optional
+from scipy import ndimage
+
+from core.logger import get_logger
+
+# 获取模块日志记录器
+logger = get_logger("image_processor")
 
 
 class ImageProcessor:
@@ -209,7 +215,7 @@ class ImageProcessor:
             
             return image
         except Exception as e:
-            print(f"加载原始图像 {frame_idx} 失败: {str(e)}")
+            logger.error(f"加载原始图像 {frame_idx} 失败: {e}")
             return None
             
     def enhance_high_bit_depth_image(self, image: np.ndarray) -> np.ndarray:
@@ -386,7 +392,7 @@ class ImageProcessor:
             
             return mask
         except Exception as e:
-            print(f"加载掩膜图像 {frame_idx} 失败: {str(e)}")
+            logger.error(f"加载掩膜图像 {frame_idx} 失败: {e}")
             return None
     
     def get_processed_mask(self, frame_idx: int) -> np.ndarray:
@@ -600,7 +606,7 @@ class ImageProcessor:
                     if not mask_in_cache:
                         self.get_mask_image(idx)
                 except Exception as e:
-                    print(f"预加载图像 {idx} 失败: {str(e)}")
+                    logger.warning(f"预加载图像 {idx} 失败: {e}")
     
     def generate_thumbnail(self, image: np.ndarray, max_size: int = 256) -> np.ndarray:
         """
@@ -901,22 +907,13 @@ class ImageProcessor:
                         component_filled = component_filled + component  # 确保原始区域保留
                         component_filled = np.clip(component_filled, 0, 1).astype(np.uint8)
                     else:
-                        # 非边缘对象使用更精确的孔洞填充
-                        # 创建扩展掩膜
-                        padded = np.pad(component, 1, mode='constant')
-                        # 创建填充掩膜
-                        fill_mask = np.zeros((h+4, w+4), dtype=np.uint8)
-                        # 复制用于填充
-                        padded_fill = padded.copy()
-                        # 从外部填充
-                        cv2.floodFill(padded_fill, fill_mask, (0, 0), 1)
-                        # 孔洞是那些未被填充到的像素
-                        holes = (padded == 0) & (padded_fill == 0)
-                        # 提取原始尺寸
-                        holes = holes[1:-1, 1:-1]
-                        # 创建填充后的组件
-                        component_filled = component.copy()
-                        component_filled[holes] = 1
+                        # 非边缘对象使用 scipy 的 binary_fill_holes（更高效）
+                        # 将组件转换为布尔数组进行孔洞填充
+                        component_bool = component.astype(bool)
+                        # 使用 scipy.ndimage.binary_fill_holes 填充孔洞
+                        filled_bool = ndimage.binary_fill_holes(component_bool)
+                        # 转换回 uint8 格式
+                        component_filled = filled_bool.astype(np.uint8)
                     
                     # 更新结果掩膜 - 精确更新，只修改这个组件
                     # 先清除这个区域的原始值
@@ -941,9 +938,9 @@ class ImageProcessor:
             # 如果对象数量减少或有标签丢失，警告并回退到原始掩膜
             if post_fill_object_count < pre_fill_object_count or len(missing_labels) > 0:
                 if len(missing_labels) > 0:
-                    print(f"警告：填充孔洞后丢失标签值 {missing_labels}，使用原始掩膜")
+                    logger.warning(f"填充孔洞后丢失标签值 {missing_labels}，使用原始掩膜")
                 else:
-                    print(f"警告：填充孔洞导致对象数量从{pre_fill_object_count}减少到{post_fill_object_count}，使用原始掩膜")
+                    logger.warning(f"填充孔洞导致对象数量从{pre_fill_object_count}减少到{post_fill_object_count}，使用原始掩膜")
                 return mask_copy
             
             return result_mask
@@ -963,12 +960,12 @@ class ImageProcessor:
                 before_positive = unique_before[unique_before > 0]
                 after_positive = unique_after[unique_after > 0]
                 if len(before_positive) > len(after_positive):
-                    print(f"警告：填充孔洞后丢失标签值，使用原始掩膜。原标签值数量：{len(before_positive)}，填充后：{len(after_positive)}")
+                    logger.warning(f"填充孔洞后丢失标签值，使用原始掩膜。原标签值数量：{len(before_positive)}，填充后：{len(after_positive)}")
                     self.processed_masks[frame_idx] = original_mask
                 else:
                     self.processed_masks[frame_idx] = filled_mask
             except Exception as e:
-                print(f"填充孔洞时出错: {str(e)}，使用原始掩膜")
+                logger.error(f"填充孔洞时出错: {e}，使用原始掩膜")
                 # 出错时恢复原始掩膜
                 self.processed_masks[frame_idx] = original_mask
             
@@ -990,12 +987,12 @@ class ImageProcessor:
                     before_positive = unique_before[unique_before > 0]
                     after_positive = unique_after[unique_after > 0]
                     if len(before_positive) > len(after_positive):
-                        print(f"警告：第{i}帧填充孔洞后丢失标签值，使用原始掩膜。原标签值数量：{len(before_positive)}，填充后：{len(after_positive)}")
+                        logger.warning(f"第{i}帧填充孔洞后丢失标签值，使用原始掩膜。原标签值数量：{len(before_positive)}，填充后：{len(after_positive)}")
                         self.processed_masks[i] = original_masks[i]
                     else:
                         self.processed_masks[i] = filled_mask
                 except Exception as e:
-                    print(f"处理第{i}帧时出错: {str(e)}，使用原始掩膜")
+                    logger.error(f"处理第{i}帧时出错: {e}，使用原始掩膜")
                     # 出错时恢复原始掩膜
                     self.processed_masks[i] = original_masks[i]
             
@@ -1269,7 +1266,7 @@ class ImageProcessor:
                                 minor_end = (int(cx + minor_dx), int(cy + minor_dy))
                                 minor_lines.append((minor_start, minor_end))
                             except Exception as e:
-                                print(f"计算轴线时出错: {str(e)}")
+                                logger.error(f"计算轴线时出错: {e}")
                 
                 # 批量绘制所有轴线
                 for start, end in major_lines:
@@ -1343,19 +1340,9 @@ class ImageProcessor:
         if show_excluded_marks and frame_idx in self.excluded_objects_marked:
             excluded_marks = self.excluded_objects_marked[frame_idx]
             for _, x, y in excluded_marks:
-                # 绘制白色X标记
-                cross_size = 4  # X标记大小（减小）
-                thickness = 1   # 线宽（减小）
-                
-                # 绘制X的两条线段
-                cv2.line(overlay, 
-                      (x - cross_size, y - cross_size),
-                      (x + cross_size, y + cross_size),
-                      (255, 255, 255), thickness)
-                cv2.line(overlay,
-                      (x + cross_size, y - cross_size),
-                      (x - cross_size, y + cross_size),
-                      (255, 255, 255), thickness)
+                # 使用cv2.drawMarker绘制白色X标记（带抗锯齿）
+                cv2.drawMarker(overlay, (x, y), (255, 255, 255), 
+                               cv2.MARKER_TILTED_CROSS, 8, 1, cv2.LINE_AA)
         
         return overlay
     
@@ -1613,30 +1600,7 @@ class ImageProcessor:
         if frame_idx < len(self.analyzed_data):
             objects = self.analyzed_data[frame_idx]
             
-        # 如果没有分析数据，尝试分析当前帧
-        if objects is None and not self.is_analyzed:
-            try:
-                # 进行单帧分析
-                objects = self.analyze_objects(frame_idx)
-                
-                # 添加帧索引
-                for obj in objects:
-                    obj["frame"] = frame_idx
-                    
-                # 存储分析结果
-                self.analyzed_data[frame_idx] = objects
-            except Exception:
-                # 分析失败时，返回基本信息
-                return {
-                    "frame": frame_idx,
-                    "object_count": 0,
-                    "total_area_pixels": 0,
-                    "total_area_um2": 0,
-                    "area_fraction": 0,
-                    "objects": []
-                }
-        
-        # 如果仍然没有数据，返回基本信息
+        # 如果没有分析数据，返回空结果（不再自动分析）
         if not objects:
             return {
                 "frame": frame_idx,

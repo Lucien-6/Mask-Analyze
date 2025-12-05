@@ -156,14 +156,18 @@ class MaskProcessorWidget(QWidget):
         
         operations_layout.addLayout(area_filter_form)
         
+        # 添加应用于所有帧的选项
+        self.apply_all_check = QCheckBox("应用到所有帧")
+        operations_layout.addWidget(self.apply_all_check)
+        
         # 设置处理操作区域的固定高度
-        operations_widget.setFixedHeight(550)  # 设置固定高度
+        operations_widget.setFixedHeight(580)  # 设置固定高度
         scroll_layout.addWidget(operations_widget)
         
         # 添加分隔线
         separator = QWidget()
-        separator.setFixedHeight(1)
-        separator.setStyleSheet("background-color: #c0c0c0; margin: 20px 0;")
+        separator.setFixedHeight(20)
+        separator.setStyleSheet("background-color: transparent;")
         scroll_layout.addWidget(separator)
         
         # 全局应用设置组
@@ -190,8 +194,8 @@ class MaskProcessorWidget(QWidget):
         
         # 添加分隔线
         separator2 = QWidget()
-        separator2.setFixedHeight(1)
-        separator2.setStyleSheet("background-color: #c0c0c0; margin: 20px 0;")
+        separator2.setFixedHeight(20)
+        separator2.setStyleSheet("background-color: transparent;")
         scroll_layout.addWidget(separator2)
         
         # 创建手动剔除对象GroupBox
@@ -223,17 +227,12 @@ class MaskProcessorWidget(QWidget):
         # 不设置固定高度，让其自动占用剩余空间
         scroll_layout.addWidget(manual_exclude_group, 1)  # 分配更多空间比例
         
-        # 添加应用于所有帧的选项和按钮容器
+        # 添加按钮容器
         buttons_container = QWidget()
         buttons_container_layout = QVBoxLayout(buttons_container)
         buttons_container_layout.setContentsMargins(0, 0, 0, 0)
         buttons_container_layout.setSpacing(5)
         
-        # 添加应用于所有帧的选项
-        self.apply_all_check = QCheckBox("应用到所有帧")
-        buttons_container_layout.addWidget(self.apply_all_check)
-        
-        # 添加按钮容器
         buttons_layout = QVBoxLayout()
         buttons_layout.setSpacing(5)
         

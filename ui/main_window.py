@@ -32,9 +32,14 @@ from ui.data_loader import DataLoaderWidget
 from ui.chart_view import ChartViewWidget
 from ui.export_dialog import ExportDialog
 from ui.help_dialog import HelpDialog
+from ui.contrast_dialog import ContrastDialog
 
 from core.image_processor import ImageProcessor
 from core.data_analyzer import ChartGenerator
+from core.logger import get_logger
+
+# 获取模块日志记录器
+logger = get_logger("main_window")
 
 
 # 添加工作线程类
@@ -157,7 +162,7 @@ class MainWindow(QMainWindow):
                     self.setWindowIcon(QIcon(icon_path))
                     break
         except Exception as e:
-            print(f"设置窗口图标时出错: {str(e)}")
+            logger.warning(f"设置窗口图标时出错: {e}")
         
         # 设置QGroupBox标题样式 - 增大字号并加粗
         self.setStyleSheet("""
@@ -986,7 +991,7 @@ class MainWindow(QMainWindow):
                 # 更新分析数据
                 self.image_processor.analyzed_data[self.current_frame_idx] = frame_objects
             except Exception as e:
-                print(f"分析当前帧时出错: {str(e)}")
+                logger.error(f"分析当前帧时出错: {e}")
         
         # 获取叠加图像
         overlay = self.image_processor.get_overlay_image(
@@ -1004,7 +1009,7 @@ class MainWindow(QMainWindow):
         
         # 更新帧编号显示
         total_frames = len(self.image_processor.original_images)
-        self.preview_control_widget.frame_label.setText(f"帧: {self.current_frame_idx + 1}/{total_frames}")
+        self.preview_control_widget.frame_label.setText(f"帧: {self.current_frame_idx}/{total_frames-1}")
         
         # 更新滑块位置
         self.preview_control_widget.slider.blockSignals(True)
@@ -1014,13 +1019,14 @@ class MainWindow(QMainWindow):
         # 更新手动剔除对象列表
         self.update_excluded_objects_list()
         
-        # 更新当前帧的直方图，如果不跳过分析更新
+        # 更新当前帧的直方图，仅当数据已分析且不跳过分析更新时
         if hasattr(self, "chart_view_widget") and not skip_analysis_update:
-            frame_stats = self.image_processor.get_frame_stats(self.current_frame_idx)
-            global_stats = self.image_processor.get_global_stats()
-            self.chart_view_widget.update_frame_histograms(
-                self.chart_generator, frame_stats, global_stats
-            )
+            if self.image_processor.is_analyzed:
+                frame_stats = self.image_processor.get_frame_stats(self.current_frame_idx)
+                global_stats = self.image_processor.get_global_stats()
+                self.chart_view_widget.update_frame_histograms(
+                    self.chart_generator, frame_stats, global_stats
+                )
     
     def toggle_play(self):
         """切换播放/暂停状态"""
@@ -1436,538 +1442,25 @@ class MainWindow(QMainWindow):
 
     def open_clahe_dialog(self):
         """打开图像对比度调整对话框"""
-        # 获取当前帧图像作为预览
-        if not self.image_processor.original_images or self.current_frame_idx >= len(self.image_processor.original_images):
+        # 检查是否已加载图像
+        if not self.image_processor.original_images or \
+           self.current_frame_idx >= len(self.image_processor.original_images):
             QMessageBox.warning(self, "警告", "请先加载图像")
             return
-            
-        # 获取原始图像的副本
+        
+        # 获取原始图像检查
         orig_image = self.image_processor.get_original_image(self.current_frame_idx)
         if orig_image is None:
             QMessageBox.warning(self, "警告", "获取图像失败")
             return
-            
-        # 创建一个完全独立的图像副本
-        orig_image = orig_image.copy()
         
-        # 创建对话框
-        dialog = QDialog(self)
-        dialog.setWindowTitle("调整图像对比度")
-        dialog.setMinimumSize(1000, 600)
-        
-        # 创建布局
-        main_layout = QVBoxLayout(dialog)
-        
-        # 创建左右分栏
-        splitter = QSplitter(Qt.Horizontal)
-        main_layout.addWidget(splitter)
-        
-        # 左侧：预览区域
-        preview_widget = QWidget()
-        preview_layout = QVBoxLayout(preview_widget)
-        preview_label = QLabel("预览效果")
-        preview_label.setAlignment(Qt.AlignCenter)
-        preview_layout.addWidget(preview_label)
-        
-        # 创建预览图像标签
-        preview_image_label = QLabel()
-        preview_image_label.setMinimumSize(400, 400)
-        preview_image_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        preview_image_label.setAlignment(Qt.AlignCenter)
-        preview_image_label.setStyleSheet("border: 1px solid #ccc; background-color: black;")
-        preview_layout.addWidget(preview_image_label)
-        
-        # 右侧：控制区域
-        control_widget = QWidget()
-        control_layout = QVBoxLayout(control_widget)
-        
-        # 直方图显示区域
-        histogram_label = QLabel("灰度直方图")
-        histogram_label.setAlignment(Qt.AlignCenter)
-        control_layout.addWidget(histogram_label)
-        
-        # 直方图图像标签
-        histogram_image_label = QLabel()
-        histogram_image_label.setMinimumSize(300, 200)
-        histogram_image_label.setAlignment(Qt.AlignCenter)
-        histogram_image_label.setStyleSheet("border: 1px solid #ccc;")
-        control_layout.addWidget(histogram_image_label)
-        
-        # 直方图阈值控制
-        threshold_group = QGroupBox("直方图阈值")
-        threshold_layout = QVBoxLayout(threshold_group)
-        
-        # 下限百分比滑块
-        lower_layout = QHBoxLayout()
-        lower_label = QLabel("下限百分比:")
-        lower_slider = QSlider(Qt.Horizontal)
-        lower_slider.setRange(0, 200)  # 0-20%
-        lower_slider.setValue(int(self.image_processor.lower_percent * 10))  # 转为整数值
-        lower_value_label = QLabel(f"{self.image_processor.lower_percent:.1f}%")
-        lower_layout.addWidget(lower_label)
-        lower_layout.addWidget(lower_slider)
-        lower_layout.addWidget(lower_value_label)
-        threshold_layout.addLayout(lower_layout)
-        
-        # 上限百分比滑块
-        upper_layout = QHBoxLayout()
-        upper_label = QLabel("上限百分比:")
-        upper_slider = QSlider(Qt.Horizontal)
-        upper_slider.setRange(800, 1000)  # 80-100%
-        upper_slider.setValue(int(self.image_processor.upper_percent * 10))  # 转为整数值
-        upper_value_label = QLabel(f"{self.image_processor.upper_percent:.1f}%")
-        upper_layout.addWidget(upper_label)
-        upper_layout.addWidget(upper_slider)
-        upper_layout.addWidget(upper_value_label)
-        threshold_layout.addLayout(upper_layout)
-        
-        control_layout.addWidget(threshold_group)
-        
-        # 亮度对比度控制
-        adjust_group = QGroupBox("亮度与对比度")
-        adjust_layout = QVBoxLayout(adjust_group)
-        
-        # 亮度滑块
-        brightness_layout = QHBoxLayout()
-        brightness_label = QLabel("亮度:")
-        brightness_slider = QSlider(Qt.Horizontal)
-        brightness_slider.setRange(50, 200)  # 0.5-2.0倍
-        brightness_slider.setValue(int(self.image_processor.brightness_factor * 100))
-        brightness_value_label = QLabel(f"{self.image_processor.brightness_factor:.2f}")
-        brightness_layout.addWidget(brightness_label)
-        brightness_layout.addWidget(brightness_slider)
-        brightness_layout.addWidget(brightness_value_label)
-        adjust_layout.addLayout(brightness_layout)
-        
-        # 对比度滑块
-        contrast_layout = QHBoxLayout()
-        contrast_label = QLabel("对比度:")
-        contrast_slider = QSlider(Qt.Horizontal)
-        contrast_slider.setRange(50, 200)  # 0.5-2.0倍
-        contrast_slider.setValue(int(self.image_processor.contrast_factor * 100))
-        contrast_value_label = QLabel(f"{self.image_processor.contrast_factor:.2f}")
-        contrast_layout.addWidget(contrast_label)
-        contrast_layout.addWidget(contrast_slider)
-        contrast_layout.addWidget(contrast_value_label)
-        adjust_layout.addLayout(contrast_layout)
-        
-        control_layout.addWidget(adjust_group)
-        
-        # 重置按钮
-        reset_button = QPushButton("重置参数")
-        control_layout.addWidget(reset_button)
-        
-        # 添加左右分栏
-        splitter.addWidget(preview_widget)
-        splitter.addWidget(control_widget)
-        splitter.setSizes([600, 400])  # 设置初始宽度比例
-        
-        # 按钮区域
-        button_layout = QHBoxLayout()
-        apply_button = QPushButton("应用")
-        cancel_button = QPushButton("取消")
-        button_layout.addStretch()
-        button_layout.addWidget(apply_button)
-        button_layout.addWidget(cancel_button)
-        main_layout.addLayout(button_layout)
-        
-        # 添加一个状态标签，用于调试
-        status_label = QLabel("等待操作...")
-        main_layout.addWidget(status_label)
-        
-        # 直接从core/image_processor.py导入所需的函数，而不是依赖实例方法
-        def enhance_image(image, lower_percent, upper_percent, brightness_factor, contrast_factor):
-            """直接增强图像的函数，不依赖ImageProcessor类实例"""
-            if image is None:
-                return None
-                
-            # 获取图像数据类型和位深
-            dtype = image.dtype
+        # 创建并显示对比度调整对话框
+        dialog = ContrastDialog(self, self.image_processor, self.current_frame_idx)
+        if dialog.exec_() == QDialog.Accepted:
+            # 清除缓存并重新加载当前帧
+            self.image_processor.clear_all_caches()
+            self.display_current_frame(force_reload=True)
             
-            # 针对高位深图像（如16位深度）或浮点型图像进行增强
-            if dtype == np.uint16 or dtype == np.float32 or dtype == np.float64:
-                # 如果是浮点型图像，先转换到适合处理的范围
-                if dtype == np.float32 or dtype == np.float64:
-                    # 计算最小值和最大值
-                    min_val = np.min(image)
-                    max_val = np.max(image)
-                    
-                    if min_val < max_val:
-                        # 归一化到0-65535范围，以便用16位整数处理
-                        image = ((image - min_val) / (max_val - min_val) * 65535).astype(np.uint16)
-                    else:
-                        # 如果图像没有动态范围，直接返回原图
-                        return image
-                
-                # 对彩色和灰度图像分别处理
-                if len(image.shape) == 3:  # 彩色图像
-                    # 如果是彩色图像，分离通道，只对亮度通道应用直方图调整
-                    if image.shape[2] == 3:  # 确保是BGR格式
-                        # 转换到LAB色彩空间
-                        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-                        l, a, b = cv2.split(lab)
-                        
-                        # 应用直方图拉伸到亮度通道
-                        l_enhanced = apply_histogram_stretch(l, lower_percent, upper_percent)
-                        
-                        # 应用亮度和对比度调整
-                        l_enhanced = adjust_brightness_contrast(
-                            l_enhanced, 
-                            brightness_factor, 
-                            contrast_factor
-                        )
-                        
-                        # 合并通道并转回BGR
-                        enhanced_lab = cv2.merge([l_enhanced, a, b])
-                        enhanced_image = cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2BGR)
-                        return enhanced_image
-                    else:
-                        # 其他通道数的彩色图像，直接转为8位
-                        return cv2.convertScaleAbs(image, alpha=255/65535)
-                else:  # 灰度图像
-                    # 应用直方图拉伸
-                    enhanced = apply_histogram_stretch(image, lower_percent, upper_percent)
-                    
-                    # 应用亮度和对比度调整
-                    enhanced = adjust_brightness_contrast(
-                        enhanced, 
-                        brightness_factor, 
-                        contrast_factor
-                    )
-                    
-                    return enhanced
-            elif dtype == np.uint8:
-                # 8位图像处理
-                if len(image.shape) == 3:  # 彩色图像
-                    # 转换到LAB色彩空间
-                    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-                    l, a, b = cv2.split(lab)
-                    
-                    # 对亮度通道应用直方图均衡
-                    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-                    l_enhanced = clahe.apply(l)
-                    
-                    # 应用亮度和对比度调整
-                    l_enhanced = adjust_brightness_contrast(
-                        l_enhanced, 
-                        brightness_factor, 
-                        contrast_factor
-                    )
-                    
-                    # 合并通道并转回BGR
-                    enhanced_lab = cv2.merge([l_enhanced, a, b])
-                    enhanced_image = cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2BGR)
-                    return enhanced_image
-                else:  # 灰度图像
-                    # 应用直方图均衡
-                    enhanced = cv2.equalizeHist(image)
-                    
-                    # 应用亮度和对比度调整
-                    enhanced = adjust_brightness_contrast(
-                        enhanced, 
-                        brightness_factor, 
-                        contrast_factor
-                    )
-                    
-                    return enhanced
-                    
-            return image
-            
-        def apply_histogram_stretch(image, lower_percent, upper_percent):
-            """应用直方图拉伸"""
-            # 计算指定百分位的像素值
-            if image.dtype == np.uint16:
-                min_val = np.percentile(image, lower_percent)
-                max_val = np.percentile(image, upper_percent)
-                
-                # 确保有效范围
-                if min_val < max_val:
-                    # 线性拉伸：将范围映射到0-255
-                    alpha = 255.0 / (max_val - min_val)
-                    beta = -min_val * alpha
-                    
-                    # 执行线性变换，并限制范围
-                    enhanced = np.clip(image * alpha + beta, 0, 255).astype(np.uint8)
-                    return enhanced
-                else:
-                    # 如果范围无效，直接转换为8位
-                    return cv2.convertScaleAbs(image, alpha=255/65535)
-            else:
-                # 如果已经是8位图像，应用普通的直方图均衡化
-                return cv2.equalizeHist(image) if image.dtype == np.uint8 else image
-        
-        def adjust_brightness_contrast(image, brightness, contrast):
-            """调整图像的亮度和对比度"""
-            if brightness == 1.0 and contrast == 1.0:
-                return image
-                
-            # 确保图像是uint8类型
-            if image.dtype != np.uint8:
-                image = cv2.convertScaleAbs(image)
-            
-            # 亮度调整：添加或减去一个常数
-            # 对比度调整：乘以一个因子，以128为中心
-            alpha = contrast  # 对比度因子
-            beta = (brightness - 1.0) * 128  # 亮度偏移
-            
-            # 应用变换: pixel = pixel * alpha + beta
-            adjusted = cv2.convertScaleAbs(image, alpha=alpha, beta=beta)
-            
-            return adjusted
-        
-        # 绘制直方图的函数
-        def draw_histogram(image):
-            if image is None:
-                return None
-                
-            # 如果是彩色图像，转为灰度
-            if len(image.shape) == 3:
-                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-            else:
-                gray = image
-                
-            # 如果是高位深图像，压缩到8位
-            if gray.dtype != np.uint8:
-                gray = cv2.convertScaleAbs(gray, alpha=255/65535)
-                
-            # 计算直方图
-            hist = cv2.calcHist([gray], [0], None, [256], [0, 256])
-            
-            # 创建直方图图像
-            hist_w = 300
-            hist_h = 200
-            bin_w = int(hist_w / 256)
-            hist_img = np.zeros((hist_h, hist_w, 3), dtype=np.uint8)
-            
-            # 归一化直方图
-            cv2.normalize(hist, hist, 0, hist_h, cv2.NORM_MINMAX)
-            
-            # 绘制直方图
-            for i in range(256):
-                cv2.rectangle(
-                    hist_img, 
-                    (i * bin_w, hist_h), 
-                    ((i + 1) * bin_w, hist_h - int(hist[i])), 
-                    (255, 255, 255), 
-                    -1
-                )
-                
-            # 标记当前阈值
-            lower_thresh = int(lower_slider.value() / 10 * 256 / 100)
-            upper_thresh = int(upper_slider.value() / 10 * 256 / 100)
-            
-            # 绘制阈值线
-            cv2.line(hist_img, (lower_thresh * bin_w, 0), (lower_thresh * bin_w, hist_h), (0, 0, 255), 2)
-            cv2.line(hist_img, (upper_thresh * bin_w, 0), (upper_thresh * bin_w, hist_h), (0, 255, 0), 2)
-            
-            return hist_img
-        
-        # 获取图像控件尺寸的函数
-        def get_preview_size():
-            # 获取预览区域的实际可用尺寸
-            w = preview_image_label.width()
-            h = preview_image_label.height()
-            
-            # 确保尺寸合理，至少为200x200
-            return max(200, w - 10), max(200, h - 10)
-            
-        # 更新预览的函数
-        def update_preview():
-            try:
-                # 获取当前参数值
-                lower_percent = lower_slider.value() / 10.0
-                upper_percent = upper_slider.value() / 10.0
-                brightness = brightness_slider.value() / 100.0
-                contrast = contrast_slider.value() / 100.0
-                
-                # 更新状态
-                status_label.setText(f"处理图像: L={lower_percent:.1f}%, U={upper_percent:.1f}%, B={brightness:.2f}, C={contrast:.2f}")
-                QApplication.processEvents()  # 更新UI
-                
-                # 创建图像副本进行处理
-                img_copy = orig_image.copy()
-                
-                # 使用直接函数处理图像，不依赖ImageProcessor类
-                enhanced = enhance_image(
-                    img_copy, 
-                    lower_percent,
-                    upper_percent,
-                    brightness,
-                    contrast
-                )
-                
-                # 绘制直方图
-                hist_img = draw_histogram(enhanced)
-                if hist_img is not None:
-                    histogram_qimg = QImage(
-                        hist_img.data, 
-                        hist_img.shape[1], 
-                        hist_img.shape[0], 
-                        hist_img.strides[0], 
-                        QImage.Format_RGB888
-                    )
-                    histogram_image_label.setPixmap(QPixmap.fromImage(histogram_qimg))
-                
-                # 获取预览区域尺寸
-                preview_w, preview_h = get_preview_size()
-                
-                # 保持原始图像高宽比缩放
-                h, w = enhanced.shape[:2]
-                ratio = min(preview_w / w, preview_h / h)
-                
-                # 计算缩放后尺寸
-                new_w = int(w * ratio)
-                new_h = int(h * ratio)
-                
-                # 缩放图像
-                resized = cv2.resize(enhanced, (new_w, new_h), interpolation=cv2.INTER_AREA)
-                
-                # 转换为QImage并显示
-                if len(resized.shape) == 3:  # 彩色图像
-                    qimg = QImage(
-                        resized.data, 
-                        resized.shape[1], 
-                        resized.shape[0], 
-                        resized.strides[0], 
-                        QImage.Format_BGR888
-                    )
-                else:  # 灰度图像
-                    qimg = QImage(
-                        resized.data, 
-                        resized.shape[1], 
-                        resized.shape[0], 
-                        resized.strides[0], 
-                        QImage.Format_Grayscale8
-                    )
-                    
-                # 显示图像
-                pixmap = QPixmap.fromImage(qimg)
-                preview_image_label.setPixmap(pixmap)
-                
-                # 更新状态
-                status_label.setText(f"预览更新完成: L={lower_percent:.1f}%, U={upper_percent:.1f}%, B={brightness:.2f}, C={contrast:.2f}")
-                
-                # 强制刷新UI
-                QApplication.processEvents()
-                
-            except Exception as e:
-                status_label.setText(f"预览更新出错: {str(e)}")
-                print(f"预览更新出错: {str(e)}")
-        
-        # 连接信号
-        def on_lower_changed(value):
-            val = value / 10.0
-            lower_value_label.setText(f"{val:.1f}%")
-            
-            # 确保下限不超过上限
-            upper_val = upper_slider.value() / 10.0
-            if val >= upper_val - 1.0:
-                lower_slider.blockSignals(True)
-                lower_slider.setValue(int((upper_val - 1.0) * 10))
-                lower_slider.blockSignals(False)
-                lower_value_label.setText(f"{(upper_val - 1.0):.1f}%")
-                return
-                
-            # 触发更新
-            update_preview()
-            
-        def on_upper_changed(value):
-            val = value / 10.0
-            upper_value_label.setText(f"{val:.1f}%")
-            
-            # 确保上限不低于下限
-            lower_val = lower_slider.value() / 10.0
-            if val <= lower_val + 1.0:
-                upper_slider.blockSignals(True)
-                upper_slider.setValue(int((lower_val + 1.0) * 10))
-                upper_slider.blockSignals(False)
-                upper_value_label.setText(f"{(lower_val + 1.0):.1f}%")
-                return
-                
-            # 触发更新
-            update_preview()
-            
-        def on_brightness_changed(value):
-            val = value / 100.0
-            brightness_value_label.setText(f"{val:.2f}")
-            # 触发更新
-            update_preview()
-            
-        def on_contrast_changed(value):
-            val = value / 100.0
-            contrast_value_label.setText(f"{val:.2f}")
-            # 触发更新
-            update_preview()
-            
-        def on_reset():
-            # 重置参数到默认值
-            lower_slider.blockSignals(True)
-            upper_slider.blockSignals(True)
-            brightness_slider.blockSignals(True)
-            contrast_slider.blockSignals(True)
-            
-            lower_slider.setValue(10)  # 1.0%
-            upper_slider.setValue(990)  # 99.0%
-            brightness_slider.setValue(100)  # 1.0
-            contrast_slider.setValue(100)  # 1.0
-            
-            lower_value_label.setText("1.0%")
-            upper_value_label.setText("99.0%")
-            brightness_value_label.setText("1.00")
-            contrast_value_label.setText("1.00")
-            
-            lower_slider.blockSignals(False)
-            upper_slider.blockSignals(False)
-            brightness_slider.blockSignals(False)
-            contrast_slider.blockSignals(False)
-            
-            # 触发更新
-            update_preview()
-            
-        def on_apply():
-            try:
-                # 保存参数
-                self.image_processor.lower_percent = lower_slider.value() / 10.0
-                self.image_processor.upper_percent = upper_slider.value() / 10.0
-                self.image_processor.brightness_factor = brightness_slider.value() / 100.0
-                self.image_processor.contrast_factor = contrast_slider.value() / 100.0
-                
-                # 清除缓存并重新加载当前帧
-                self.image_processor.clear_all_caches()
-                self.display_current_frame(force_reload=True)
-                
-                # 关闭对话框
-                dialog.accept()
-                
-                # 显示状态
-                self.status_label.setText("已应用图像对比度调整")
-                self.progress_bar.setValue(100)
-            except Exception as e:
-                status_label.setText(f"应用参数时出错: {str(e)}")
-            
-        def on_cancel():
-            dialog.reject()
-            
-        # 窗口大小变化事件处理
-        def on_resize():
-            # 窗口大小变化时更新预览
-            update_preview()
-            
-        # 每次大小变化都更新预览
-        dialog.resizeEvent = lambda event: on_resize()
-            
-        # 连接信号和槽
-        lower_slider.valueChanged.connect(on_lower_changed)
-        upper_slider.valueChanged.connect(on_upper_changed)
-        brightness_slider.valueChanged.connect(on_brightness_changed)
-        contrast_slider.valueChanged.connect(on_contrast_changed)
-        reset_button.clicked.connect(on_reset)
-        apply_button.clicked.connect(on_apply)
-        cancel_button.clicked.connect(on_cancel)
-        
-        # 初始显示
-        # 延迟一点执行初始预览，确保界面已完成布局
-        QTimer.singleShot(100, update_preview)
-        
-        # 显示对话框
-        dialog.exec_()
+            # 显示状态
+            self.status_label.setText("已应用图像对比度调整")
+            self.progress_bar.setValue(100)
